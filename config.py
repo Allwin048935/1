@@ -1,8 +1,8 @@
 # config.py
 
 # Binance API credentials
-api_key = 'your_api_key'
-api_secret = 'your_api_secret'
+api_key = 'JSUaiFx3vAeuvtXLuImGEBPcMSrwjRMWDOqGp91AlRuX63PwEqXnKWJQmfEcSXvR'
+api_secret = 'FtmsQbpCDIc64BaQ6s5l5VHHWfwrCbqsjytVMo5cHXetrsUsZBa9AqHiRtkkieMH'
 
 # Trading pairs and fixed quantity in USDT
 symbols = [
