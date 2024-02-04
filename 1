@@ -1,0 +1,106 @@
+import ccxt
+import pandas as pd
+from ta.trend import EMA
+import time
+from config import api_key, api_secret, symbols, fixed_quantity_usdt
+
+# Initialize Binance futures client
+exchange = ccxt.binance({
+    'apiKey': api_key,
+    'secret': api_secret,
+    'enableRateLimit': True,
+    'options': {
+        'defaultType': 'future',
+    }
+})
+
+# Function to fetch account balance for futures
+def get_account_balance():
+    balance = exchange.fetch_balance()
+    return balance['total']['USDT']
+
+# Function to get the current market price for futures
+def get_market_price(symbol):
+    ticker = exchange.fetch_ticker(symbol)
+    return ticker['ask']
+
+# Function to calculate order quantity in contracts based on fixed USDT amount
+def calculate_order_quantity_usdt(fixed_quantity_usdt, market_price):
+    return fixed_quantity_usdt / market_price
+
+# Function to fetch historical data for futures
+def fetch_historical_data(symbol, timeframe, limit):
+    ohlcv = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
+    df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+    df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+    df.set_index('timestamp', inplace=True)
+    return df
+
+# Function to calculate EMAs
+def calculate_emas(data, short_ema_period, medium_ema_period, long_ema_period):
+    data['short_ema'] = EMA(data['close'], window=short_ema_period)
+    data['medium_ema'] = EMA(data['close'], window=medium_ema_period)
+    data['long_ema'] = EMA(data['close'], window=long_ema_period)
+    return data
+
+# Main trading function
+def ema_crossover_strategy(data, short_ema_period, medium_ema_period, long_ema_period, fixed_quantity_usdt, symbol):
+    market_price = get_market_price(symbol)
+
+    if (
+        data['short_ema'].iloc[-2] < data['long_ema'].iloc[-2] and
+        data['short_ema'].iloc[-1] > data['long_ema'].iloc[-1]
+    ):
+        # Short EMA crossed above Long EMA, enter long position
+        quantity = calculate_order_quantity_usdt(fixed_quantity_usdt, market_price)
+        # Implement buy order logic here using the 'quantity' variable
+        print(f'Enter Long. Buying {quantity} contracts of {symbol} futures')
+
+    elif (
+        data['short_ema'].iloc[-2] > data['medium_ema'].iloc[-2] and
+        data['short_ema'].iloc[-1] < data['medium_ema'].iloc[-1]
+    ):
+        # Short EMA crossed down the Medium EMA, cancel the long position
+        # Implement logic to cancel long position here
+        print(f'Cancel Long Position for {symbol}')
+
+    elif (
+        data['short_ema'].iloc[-2] > data['long_ema'].iloc[-2] and
+        data['short_ema'].iloc[-1] < data['long_ema'].iloc[-1]
+    ):
+        # Short EMA crossed down the Long EMA, enter short position
+        quantity = calculate_order_quantity_usdt(fixed_quantity_usdt, market_price)
+        # Implement sell order logic here using the 'quantity' variable
+        print(f'Enter Short. Selling {quantity} contracts of {symbol} futures')
+
+    elif (
+        data['short_ema'].iloc[-2] < data['medium_ema'].iloc[-2] and
+        data['short_ema'].iloc[-1] > data['medium_ema'].iloc[-1]
+    ):
+        # Short EMA crossed above the Medium EMA, cancel the short position
+        # Implement logic to cancel short position here
+        print(f'Cancel Short Position for {symbol}')
+
+    else:
+        print(f'Hold for {symbol}')
+
+# Main loop
+def main():
+    short_ema_period = 7
+    medium_ema_period = 20
+    long_ema_period = 30
+
+    while True:
+        for symbol in symbols:
+            historical_data = fetch_historical_data(symbol, '5m', 100)
+            historical_data = calculate_emas(historical_data, short_ema_period, medium_ema_period, long_ema_period)
+
+            ema_crossover_strategy(
+                historical_data, short_ema_period, medium_ema_period, long_ema_period, fixed_quantity_usdt, symbol
+            )
+
+        time.sleep(60)  # Sleep for 5 minutes before the next iteration
+
+# Run the bot
+if __name__ == "__main__":
+    main()
