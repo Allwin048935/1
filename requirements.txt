@@ -7,4 +7,4 @@ schedule==1.1.0
 ta==0.7.0
 asyncio==3.4.3
 plyer==2.0.0
-pandas_ta==0.3.14
+pandas_ta==0.2.45b0
