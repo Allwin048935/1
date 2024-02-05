@@ -20,7 +20,7 @@ def place_market_order(symbol, side, quantity):
     try:
         order_params = {
             'symbol': symbol,
-            'quantity': quantity,
+            'amount': quantity,
             'type': 'market',
             'side': side,
         }
