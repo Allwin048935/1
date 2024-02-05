@@ -1,0 +1,71 @@
+import ccxt
+import pandas as pd
+import time
+
+# Initialize Binance API
+binance = ccxt.binance({
+    'apiKey': 'JSUaiFx3vAeuvtXLuImGEBPcMSrwjRMWDOqGp91AlRuX63PwEqXnKWJQmfEcSXvR',
+    'secret': 'FtmsQbpCDIc64BaQ6s5l5VHHWfwrCbqsjytVMo5cHXetrsUsZBa9AqHiRtkkieMH',
+})
+
+# Define trading parameters
+symbol = 'LINK/USDT'
+timeframe = '3m'
+short_ema_period = 7
+medium_ema_period = 20
+long_ema_period = 30
+
+# Function to place a market order
+def place_market_order(symbol, side, quantity):
+    try:
+        order_params = {
+            'symbol': symbol,
+            'quantity': quantity,
+            'type': 'market',
+            'side': side,
+        }
+        order = binance.create_order(**order_params)
+        print(f"Order placed - Symbol: {symbol}, Side: {side}, Quantity: {quantity}")
+        return order
+    except ccxt.NetworkError as e:
+        print(f"Network error: {e}")
+    except ccxt.ExchangeError as e:
+        print(f"Exchange error: {e}")
+    except Exception as e:
+        print(f"Error: {e}")
+
+# Continuous trading loop
+while True:
+    # Fetch historical data
+    ohlcv = binance.fetch_ohlcv(symbol, timeframe)
+    df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+    df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+    df.set_index('timestamp', inplace=True)
+
+    # Calculate EMAs
+    df['short_ema'] = df['close'].ewm(span=short_ema_period, adjust=False).mean()
+    df['medium_ema'] = df['close'].ewm(span=medium_ema_period, adjust=False).mean()
+    df['long_ema'] = df['close'].ewm(span=long_ema_period, adjust=False).mean()
+
+    # Initialize position
+    position = None
+
+    # Implement order logic
+    for i in range(long_ema_period, len(df)):
+        if df['short_ema'][i - 1] < df['long_ema'][i - 1] and df['short_ema'][i] > df['long_ema'][i]:
+            # Short EMA crosses over Long EMA, enter long position
+            if position != 'long':
+                print('Enter Long Position')
+                # Place market buy order with desired quantity
+                order = place_market_order(symbol, 'buy', 1)  # Adjust quantity as needed
+                position = 'long'
+        elif df['short_ema'][i - 1] > df['medium_ema'][i - 1] and df['short_ema'][i] < df['medium_ema'][i]:
+            # Short EMA crosses under Medium EMA, close long position
+            if position == 'long':
+                print('Close Long Position')
+                # Place market sell order with desired quantity
+                order = place_market_order(symbol, 'sell', 1)  # Adjust quantity as needed
+                position = None
+
+    # Pause for a while before the next iteration
+    time.sleep(300)  # Adjust the sleep time as needed
