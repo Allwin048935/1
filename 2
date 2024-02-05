@@ -1,0 +1,106 @@
+import ccxt
+import pandas as pd
+import pandas_ta as ta
+import time
+from config import api_key, api_secret, symbols, fixed_quantity_usdt
+
+# Initialize Binance futures client
+exchange = ccxt.binance({
+    'apiKey': api_key,
+    'secret': api_secret,
+    'enableRateLimit': True,
+    'options': {
+        'defaultType': 'future',
+    }
+})
+
+# Function to fetch account balance for futures
+def get_account_balance():
+    balance = exchange.fetch_balance()
+    return balance['total']['USDT']
+
+# Function to get the current market price for futures
+def get_market_price(symbol):
+    ticker = exchange.fetch_ticker(symbol)
+    return ticker['ask']
+
+# Function to calculate order quantity in contracts based on fixed USDT amount
+def calculate_order_quantity_usdt(fixed_quantity_usdt, market_price):
+    return fixed_quantity_usdt / market_price
+
+# Function to fetch historical data for futures
+def fetch_historical_data(symbol, timeframe, limit):
+    ohlcv = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
+    df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+    df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+    df.set_index('timestamp', inplace=True)
+    return df
+
+# Function to calculate EMAs using pandas_ta
+def calculate_emas(data, short_ema_period, medium_ema_period, long_ema_period):
+    data.ta.ema(close='close', length=short_ema_period, append=True)
+    data.ta.ema(close='close', length=medium_ema_period, append=True)
+    data.ta.ema(close='close', length=long_ema_period, append=True)
+    return data
+
+# Main trading function
+def ema_crossover_strategy(data, short_ema_period, medium_ema_period, long_ema_period, fixed_quantity_usdt, symbol):
+    market_price = get_market_price(symbol)
+
+    if (
+        data['close'].iloc[-2] < data['EMA_' + str(short_ema_period)].iloc[-2] and
+        data['close'].iloc[-1] > data['EMA_' + str(short_ema_period)].iloc[-1]
+    ):
+        # Short EMA crossed above Close, enter long position
+        quantity = calculate_order_quantity_usdt(fixed_quantity_usdt, market_price)
+        # Implement buy order logic here using the 'quantity' variable
+        print(f'Enter Long. Buying {quantity} contracts of {symbol} futures')
+
+    elif (
+        data['close'].iloc[-2] > data['EMA_' + str(medium_ema_period)].iloc[-2] and
+        data['close'].iloc[-1] < data['EMA_' + str(medium_ema_period)].iloc[-1]
+    ):
+        # Medium EMA crossed down the Close, cancel the long position
+        # Implement logic to cancel long position here
+        print(f'Cancel Long Position for {symbol}')
+
+    elif (
+        data['close'].iloc[-2] > data['EMA_' + str(long_ema_period)].iloc[-2] and
+        data['close'].iloc[-1] < data['EMA_' + str(long_ema_period)].iloc[-1]
+    ):
+        # Long EMA crossed down the Close, enter short position
+        quantity = calculate_order_quantity_usdt(fixed_quantity_usdt, market_price)
+        # Implement sell order logic here using the 'quantity' variable
+        print(f'Enter Short. Selling {quantity} contracts of {symbol} futures')
+
+    elif (
+        data['close'].iloc[-2] < data['EMA_' + str(medium_ema_period)].iloc[-2] and
+        data['close'].iloc[-1] > data['EMA_' + str(medium_ema_period)].iloc[-1]
+    ):
+        # Medium EMA crossed above the Close, cancel the short position
+        # Implement logic to cancel short position here
+        print(f'Cancel Short Position for {symbol}')
+
+    else:
+        print(f'Hold for {symbol}')
+
+# Main loop
+def main():
+    short_ema_period = 7
+    medium_ema_period = 20
+    long_ema_period = 30
+
+    while True:
+        for symbol in symbols:
+            historical_data = fetch_historical_data(symbol, '5m', 100)  # Fetch data every 5 minutes
+            historical_data = calculate_emas(historical_data, short_ema_period, medium_ema_period, long_ema_period)
+
+            ema_crossover_strategy(
+                historical_data, short_ema_period, medium_ema_period, long_ema_period, fixed_quantity_usdt, symbol
+            )
+
+        time.sleep(300)  # Sleep for 5 minutes before the next iteration
+
+# Run the bot
+if __name__ == "__main__":
+    main()
