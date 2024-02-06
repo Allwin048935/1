@@ -1,0 +1,82 @@
+import ccxt
+import pandas as pd
+import time
+
+# Initialize Binance Futures API
+binance_futures = ccxt.binance({
+    'apiKey': 'YOUR_API_KEY',
+    'secret': 'YOUR_API_SECRET',
+    'enableRateLimit': True,
+    'options': {
+        'defaultType': 'future',  # Set the default type to futures
+    }
+})
+
+# Define trading parameters
+symbol = 'LINK/USDT'
+timeframe = '3m'
+short_ema_period = 7
+medium_ema_period = 20
+long_ema_period = 30
+
+# Fixed quantity in USDT worth of contracts
+fixed_quantity_usdt = 20
+
+# Function to place a market order for futures
+def place_market_order_futures(symbol, side, quantity):
+    try:
+        order_params = {
+            'symbol': symbol,
+            'quantity': quantity,
+            'type': 'MARKET',
+            'side': side,
+        }
+        order = binance_futures.create_order(**order_params)
+        print(f"Order placed - Symbol: {symbol}, Side: {side}, Quantity: {quantity}")
+        return order
+    except ccxt.NetworkError as e:
+        print(f"Network error: {e}")
+    except ccxt.ExchangeError as e:
+        print(f"Exchange error: {e}")
+    except Exception as e:
+        print(f"Error: {e}")
+
+# Continuous trading loop
+while True:
+    # Fetch historical data for futures
+    ohlcv = binance_futures.fetch_ohlcv(symbol, timeframe)
+    df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+    df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+    df.set_index('timestamp', inplace=True)
+
+    # Calculate EMAs
+    df['short_ema'] = df['close'].ewm(span=short_ema_period, adjust=False).mean()
+    df['medium_ema'] = df['close'].ewm(span=medium_ema_period, adjust=False).mean()
+    df['long_ema'] = df['close'].ewm(span=long_ema_period, adjust=False).mean()
+
+    # Initialize position
+    position = None
+
+    # Implement order logic for futures
+    for i in range(long_ema_period, len(df)):
+        if df['short_ema'][i - 1] < df['long_ema'][i - 1] and df['short_ema'][i] > df['long_ema'][i]:
+            # Short EMA crosses over Long EMA, enter long position
+            if position != 'long':
+                print('Enter Long Position')
+                # Calculate the quantity based on the fixed USDT value
+                quantity = fixed_quantity_usdt / df['close'][i]
+                # Place market buy order for futures with calculated quantity
+                order = place_market_order_futures(symbol, 'BUY', quantity)
+                position = 'long'
+        elif df['short_ema'][i - 1] > df['medium_ema'][i - 1] and df['short_ema'][i] < df['medium_ema'][i]:
+            # Short EMA crosses under Medium EMA, close long position
+            if position == 'long':
+                print('Close Long Position')
+                # Calculate the quantity based on the fixed USDT value
+                quantity = fixed_quantity_usdt / df['close'][i]
+                # Place market sell order for futures with calculated quantity
+                order = place_market_order_futures(symbol, 'SELL', quantity)
+                position = None
+
+    # Pause for a while before the next iteration
+    time.sleep(300)  # Adjust the sleep time as needed
